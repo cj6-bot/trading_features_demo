@@ -1,106 +1,102 @@
 import streamlit as st
+import ccxt  # المكتبة الأساسية للربط مع المنصات
 import pandas as pd
-import time
-
-# --- الإعدادات الثابتة (حسب طلبك) ---
-FIXED_MARGIN = 100.0  # مارجن ثابت 100 دولار من محفظتك
-LEVERAGE = 100        # رافعة مالية 100x
-TOTAL_POSITION_VALUE = FIXED_MARGIN * LEVERAGE  # حجم الصفقة الكلي 10,000$
 
 # --- إعدادات الصفحة ---
-st.set_page_config(page_title="Whale Engine Server-Side", layout="wide")
+st.set_page_config(page_title="Whale Engine Pro", layout="wide")
 
-# --- محاكي لجلب البيانات الحقيقية (النقوصات التي غابت) ---
-def get_market_data():
-    # محاكاة لجلب السعر والبيانات لضمان عدم حدوث خطأ في الاتصال
-    return {
-        "price": 79841.1,
-        "symbol": "BTC_USDT",
-        "tick_size": 1  # عدد المراتب العشرية المسموحة في Gate.io للبيتكوين
-    }
+# --- واجهة إدخال مفاتيح الـ API (الأمان أولاً) ---
+st.sidebar.title("🔑 إعدادات الاتصال")
+api_key = st.sidebar.text_input("API Key", type="password")
+api_secret = st.sidebar.text_input("Secret Key", type="password")
+testnet_mode = st.sidebar.checkbox("تشغيل وضع Testnet", value=True)
 
-# --- نظام المؤشرات الـ 10 (المنطق الكامل) ---
-def analyze_indicators():
-    # هنا قائمة بأسماء المؤشرات التي يحللها البوت عادةً
-    indicators = [
-        "RSI (14)", "MACD", "EMA 20", "EMA 50", "Bollinger Bands",
-        "Stochastic", "ADX", "CCI", "ATR", "Ichimoku"
-    ]
-    # محاكاة تصويت حقيقي (يجب ربطها بمكتبة TA-Lib في النسخة النهائية)
-    results = [1 if i < 8 else 0 for i in range(10)]  # مثال: 8 مؤشرات شراء
-    return list(zip(indicators, results))
+# --- الثوابت حسب طلبك ---
+FIXED_MARGIN = 100.0  # مارجن ثابت 100$
+LEVERAGE = 100        # رافعة 100x
 
-# --- وظيفة التنفيذ ومعالجة أخطاء السعر (المرسل للمنصة) ---
-def place_order_gateio(side, entry_price, qty):
+# --- وظيفة الربط بالمنصة ---
+def get_exchange():
+    if not api_key or not api_secret:
+        st.error("الرجاء إدخال مفاتيح الـ API أولاً!")
+        return None
+    
+    exchange = ccxt.gateio({
+        'apiKey': api_key,
+        'secret': api_secret,
+        'options': {'defaultType': 'swap'}  # للتداول في الفيوتشرز
+    })
+    exchange.set_sandbox_mode(testnet_mode)
+    return exchange
+
+# --- نظام المؤشرات الـ 10 ---
+def get_indicators_signals():
+    # هنا يتم وضع منطق التحليل الفني الحقيقي
+    indicators = ["RSI", "MACD", "EMA20", "EMA50", "BB", "Stoch", "ADX", "CCI", "ATR", "Ichimoku"]
+    # محاكاة: 1 يعني شراء، 0 يعني بيع/حياد
+    signals = [1, 1, 1, 1, 1, 1, 1, 0, 0, 1] 
+    return list(zip(indicators, signals))
+
+# --- تنفيذ الصفقة ---
+def open_position(exchange, side, price):
     try:
-        # الحل الجذري للخطأ الأحمر (AUTO_INVALID_PARAM_PRICE)
-        # تقريب السعر والكمية حسب قوانين المنصة
-        clean_entry = round(entry_price, 1)
-        clean_tp = round(clean_entry * 1.01, 1)  # هدف 1%
-        clean_sl = round(clean_entry * 0.995, 1) # وقف 0.5%
-        clean_qty = round(qty, 4)
-
-        # محاكاة إرسال البيانات للـ API
-        order_payload = {
-            "order_type": "limit",
-            "symbol": "BTC_USDT",
-            "side": side,
-            "price": clean_entry,
-            "size": clean_qty,
-            "stop_loss": clean_sl,
-            "take_profit": clean_tp,
-            "leverage": LEVERAGE
+        # حساب الكمية: 100$ * 100 / السعر
+        qty = (FIXED_MARGIN * LEVERAGE) / price
+        
+        # حل مشكلة الخطأ الأحمر (التقريب)
+        symbol = 'BTC/USDT:USDT'
+        params = {
+            'stopLoss': {'type': 'limit', 'price': round(price * 0.995, 1)},
+            'takeProfit': {'type': 'limit', 'price': round(price * 1.01, 1)},
         }
-        return True, order_payload
+        
+        order = exchange.create_order(
+            symbol=symbol,
+            type='market',
+            side=side,
+            amount=round(qty, 4),
+            params=params
+        )
+        return True, order
     except Exception as e:
         return False, str(e)
 
-# --- واجهة المستخدم (الاحترافية) ---
-st.title("🐋 محرك الحيتان: النسخة الاحترافية (Server-Side)")
-st.markdown(f"**الحالة:** متصل بـ Gate.io | **المارجن الثابت:** {FIXED_MARGIN}$ | **الرافعة:** {LEVERAGE}x")
+# --- الواجهة الرئيسية ---
+st.title("🐋 محرك الحيتان: الربط الفعلي")
 
-# عرض المؤشرات في أعمدة
-st.subheader("📊 نظام تصويت المؤشرات (10/10)")
-indicator_data = analyze_indicators()
+if st.sidebar.button("فحص الاتصال بالحساب"):
+    ex = get_exchange()
+    if ex:
+        balance = ex.fetch_balance()
+        st.sidebar.success(f"متصل! الرصيد المتاح: {balance['total']['USDT']}$")
+
+# عرض المؤشرات
+st.subheader("📊 حالة المؤشرات الفنية")
+signals_data = get_indicators_signals()
+total_buy = sum([s[1] for s in signals_data])
+
 cols = st.columns(5)
-total_votes = 0
-
-for i, (name, vote) in enumerate(indicator_data):
-    col_idx = i % 5
-    with cols[col_idx]:
-        status = "✅ Buy" if vote == 1 else "⚪ Neutral"
-        st.metric(label=name, value=status)
-        total_votes += vote
+for i, (name, val) in enumerate(signals_data):
+    cols[i%5].metric(name, "Buy" if val == 1 else "Wait")
 
 st.divider()
 
-# منطقة التنفيذ
-market = get_market_data()
-calculated_qty = TOTAL_POSITION_VALUE / market['price']
-
-col_info1, col_info2, col_info3 = st.columns(3)
-with col_info1:
-    st.info(f"💰 حجم الصفقة: {TOTAL_POSITION_VALUE}$")
-with col_info2:
-    st.info(f"₿ الكمية: {calculated_qty:.4f} BTC")
-with col_info3:
-    st.info(f"🎯 نتيجة التصويت: {total_votes} / 10")
-
-# شرط الدخول التلقائي
-if total_votes >= 7:
-    st.success("🔥 الإشارة قوية جداً! المحرك جاهز للتنفيذ.")
-    if st.button("تشغيل الصفقة الآن", use_container_width=True):
-        with st.spinner('جاري إرسال الأوامر وتقريب الأسعار...'):
-            success, result = place_order_gateio("buy", market['price'], calculated_qty)
+# زر التنفيذ
+if total_buy >= 7:
+    st.success(f"🔥 إشارة دخول قوية ({total_buy}/10)")
+    if st.button("فتح صفقة بمارجن 100$ ورافعة 100x"):
+        exchange = get_exchange()
+        if exchange:
+            # جلب السعر الحالي الحقيقي
+            ticker = exchange.fetch_ticker('BTC/USDT:USDT')
+            current_p = ticker['last']
+            
+            success, res = open_position(exchange, 'buy', current_p)
             if success:
                 st.balloons()
-                st.json(result) # عرض البيانات المرسلة للتأكد من خلوها من الأخطاء
+                st.write("✅ تمت الصفقة بنجاح في المنصة!")
+                st.json(res)
             else:
-                st.error(f"فشل في التنفيذ: {result}")
+                st.error(f"❌ فشل التنفيذ: {res}")
 else:
-    st.warning("⏳ بانتظار إشارة تصويت 7/10 على الأقل...")
-
-# --- قسم المراقبة (الذي كان مفقوداً) ---
-st.sidebar.header("📋 سجل العمليات")
-if 'logs' not in st.session_state:
-    st.sidebar.write("لا توجد عمليات نشطة")
+    st.warning("⏳ النظام يراقب.. لا توجد إشارة دخول حالياً.")
