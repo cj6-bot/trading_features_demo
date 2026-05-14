@@ -3,68 +3,67 @@ import ccxt
 import time
 from datetime import datetime
 
-# إعدادات الصفحة
-st.set_page_config(page_title="OKX Crypto Sniper", layout="wide")
-st.title("🤖 بوت OKX للكريبتو - نسخة المحترفين")
+st.set_page_config(page_title="Gate.io Futures Sniper", layout="wide")
+st.title("🚀 بوت Gate.io للفيوتشرز - نسخة السحاب")
 
 with st.sidebar:
-    st.header("🔑 مفاتيح OKX Demo")
-    api_key = st.text_input("API Key", type="password")
-    secret_key = st.text_input("Secret Key", type="password")
-    passphrase = st.text_input("Passphrase", type="password") # OKX تطلب كلمة مرور للمفتاح
+    st.header("🔑 مفاتيح Gate.io Testnet")
+    api_key = st.text_input("API Key", type="password").strip()
+    secret_key = st.text_input("Secret Key", type="password").strip()
     
-    st.header("⚙️ إعدادات الصفقات")
-    symbol = st.selectbox("العملة", ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"])
-    leverage = st.slider("الرافعة المالية", 1, 100, 20)
-    trade_amount = st.number_input("مبلغ الدخول ($)", min_value=10.0, value=50.0)
+    st.header("⚙️ إعدادات الفيوتشرز")
+    # الرموز في Gate.io فيوتشرز تكون بصيغة BTC_USDT
+    symbol = st.selectbox("الزوج", ["BTC_USDT", "ETH_USDT", "SOL_USDT"])
+    leverage = st.slider("الرافعة المالية", 1, 100, 10)
+    trade_amount = st.number_input("مبلغ الدخول ($)", min_value=1.0, value=10.0)
     
     st.markdown("---")
     run_bot = st.toggle("إطلاق المحرك الآن 🚀")
 
 if run_bot:
-    if not (api_key and secret_key and passphrase):
-        st.error("❌ لازم تضيف الـ API Key والـ Secret والـ Passphrase!")
+    if not (api_key and secret_key):
+        st.warning("⚠️ أدخل المفاتيح أولاً!")
     else:
         try:
-            # الربط بحساب الـ Demo في OKX
-            exchange = ccxt.okx({
+            # إعداد الاتصال بـ Gate.io Futures Testnet
+            exchange = ccxt.gateio({
                 'apiKey': api_key,
                 'secret': secret_key,
-                'password': passphrase,
                 'enableRateLimit': True,
-                'options': {'defaultType': 'swap'} # للتداول بالعقود الدائمة
+                'options': {'defaultType': 'swap'} 
             })
             
-            # تفعيل وضع التجريبي (Demo Mode)
-            exchange.set_sandbox_mode(True) 
+            # تفعيل وضع الساندبوكس (الديمو)
+            exchange.set_sandbox_mode(True)
 
-            # جلب الرصيد
+            # جلب الرصيد للتأكد من الاتصال
             balance = exchange.fetch_balance()
-            st.success("✅ تم الاتصال بنجاح بـ OKX Demo")
+            st.success("✅ متصل بنجاح بسيرفر الفيوتشرز!")
+
+            placeholder = st.empty()
             
-            col1, col2 = st.columns(2)
-            col1.metric("الرصيد المتاح USDT", f"{balance.get('USDT', {}).get('free', 0)}")
-
             while True:
-                ticker = exchange.fetch_ticker(symbol)
-                price = ticker['last']
-                
-                # حساب الكمية (Quantity)
-                qty = (trade_amount * leverage) / price
-                
-                # تنفيذ صفقة شراء (Market Order)
-                try:
-                    order = exchange.create_market_buy_order(symbol, qty)
-                    now = datetime.now().strftime("%H:%M:%S")
-                    st.toast(f"🚀 تم الدخول بصفقة {symbol} بسعر {price}")
-                    st.write(f"[{now}] ✅ تم تنفيذ صفقة شراء للعملة {symbol}")
-                except Exception as e_trade:
-                    st.error(f"⚠️ فشل الدخول: {e_trade}")
+                with placeholder.container():
+                    ticker = exchange.fetch_ticker(symbol)
+                    price = ticker['last']
+                    st.metric(f"سعر {symbol} الحالي", f"${price}")
+                    
+                    # حساب الكمية (Size)
+                    # ملاحظة: العقود في الفيوتشرز تحسب بالـ Contract Size
+                    amount = trade_amount / price
+                    
+                    try:
+                        # تنفيذ صفقة شراء ماركت
+                        order = exchange.create_market_buy_order(symbol, amount)
+                        now = datetime.now().strftime("%H:%M:%S")
+                        st.success(f"[{now}] 🎯 تم فتح مركز فيوتشرز بنجاح!")
+                    except Exception as e_trade:
+                        st.error(f"⚠️ خطأ بالتداول: {e_trade}")
 
-                time.sleep(60)
+                time.sleep(30)
                 st.rerun()
 
         except Exception as e:
-            st.error(f"🛑 خطأ في الاتصال: {e}")
+            st.error(f"🛑 خطأ اتصال: {e}")
 else:
-    st.info("بانتظار إشارة الانطلاق على OKX!")
+    st.info("المحرك بانتظار إشارة البدء..")
