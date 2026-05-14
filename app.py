@@ -1,65 +1,74 @@
 import streamlit as st
-import ccxt
+import MetaTrader5 as mt5
 import time
+from datetime import datetime
 
-# إعدادات الصفحة
-st.set_page_config(page_title="Binance Futures Bot", layout="centered", page_icon="🤖")
-
-st.title("🤖 بوت تداول الفيوجرز (النسخة العالمية)")
-st.info("تم تعديل الروابط لتجاوز القيود الجغرافية للسيرفرات.")
+st.set_page_config(page_title="Gold Sniper MT5", layout="wide")
+st.title("🏆 بوت الذهب - رافعة مالية قصوى")
 
 # القائمة الجانبية
 with st.sidebar:
-    st.header("⚙️ إعدادات الاتصال")
-    api_key = st.text_input("API Key", type="password")
-    secret_key = st.text_input("Secret Key", type="password")
+    st.header("⚙️ إعدادات الذهب")
+    # تأكد من كتابة الرمز كما هو في برنامجك (GOLD أو XAUUSD)
+    symbol = st.text_input("رمز الذهب", value="XAUUSD")
+    lot_size = st.number_input("حجم اللوت (أعلى لوت)", min_value=0.01, value=1.0, step=0.1)
     
-    st.divider()
+    st.markdown("---")
+    run_bot = st.toggle("إطلاق المحرك الآن 🚀")
+    if st.button("🚨 إغلاق جميع الصفقات فوراً"):
+        st.session_state.force_close = True
+
+# دالة فتح صفقة ذهب
+def trade_gold(type):
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        return None
     
-    st.header("📊 إعدادات الصفقة")
-    symbol = st.selectbox("اختر العملة", ["BTC/USDT", "ETH/USDT", "SOL/USDT"])
-    leverage = st.slider("الرافعة المالية", 1, 20, 10)
+    price = tick.ask if type == mt5.ORDER_TYPE_BUY else tick.bid
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": symbol,
+        "volume": float(lot_size),
+        "type": type,
+        "price": price,
+        "magic": 999999,
+        "comment": "Gold Sniper",
+        "type_time": mt5.ORDER_TIME_GTC,
+        "type_filling": mt5.ORDER_FILLING_IOC,
+    }
+    return mt5.order_send(request)
 
-# واجهة العرض
-price_placeholder = st.empty()
-status_placeholder = st.empty()
-
-if st.button("🚀 بدء تشغيل البوت"):
-    if not api_key or not secret_key:
-        st.error("الرجاء إدخال المفاتيح أولاً!")
+if run_bot:
+    if not mt5.initialize():
+        st.error("❌ افتح برنامج MT5 أولاً!")
     else:
-        try:
-            # إعداد المنصة مع روابط مباشرة لتجاوز الحجب الجغرافي
-            exchange = ccxt.binance({
-                'apiKey': api_key,
-                'secret': secret_key,
-                'enableRateLimit': True,
-                'options': {
-                    'defaultType': 'future',
-                    'adjustForTimeDifference': True
-                }
-            })
-            
-            # إجبار المكتبة على استخدام روابط الـ API العالمية (تجاوز حجب السيرفرات الأمريكية)
-            exchange.urls['api']['public'] = 'https://fapi.binance.com/fapi/v1'
-            exchange.urls['api']['private'] = 'https://fapi.binance.com/fapi/v1'
-            
-            st.success(f"✅ تم الاتصال بنجاح! البوت يراقب {symbol}")
-            
-            while True:
-                # جلب السعر
-                ticker = exchange.fetch_ticker(symbol)
-                price = ticker['last']
+        # عرض بيانات الحساب والرافعة
+        acc = mt5.account_info()
+        st.success(f"✅ متصل بحساب: {acc.login} | الرافعة المالية: 1:{acc.leverage}")
+        
+        col1, col2 = st.columns(2)
+        price_area = col1.empty()
+        log_area = col2.empty()
+
+        while True:
+            tick = mt5.symbol_info_tick(symbol)
+            if tick:
+                price_area.metric("سعر الذهب الحالي 🪙", f"${tick.bid}")
                 
-                # تحديث الشاشة
-                price_placeholder.metric(label=f"سعر {symbol} الحالي", value=f"{price} USDT")
-                status_placeholder.write("🔄 يتم التحديث تلقائياً كل 5 ثوانٍ...")
+                # تنفيذ صفقة كل دقيقة (أو حسب استراتيجيتك)
+                res = trade_gold(mt5.ORDER_TYPE_BUY)
                 
-                time.sleep(5)
-                
-        except Exception as e:
-            # عرض الخطأ بشكل مبسط
-            if "451" in str(e) or "restricted" in str(e).lower():
-                st.error("❌ لا تزال باينانس تحجب السيرفر. جرب استخدام مفتاح API من حساب رسمي أو تغيير الـ VPN.")
-            else:
-                st.error(f"❌ حدث خطأ: {str(e)}")
+                now = datetime.now().strftime("%H:%M:%S")
+                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                    st.toast(f"✅ تم دخول صفقة ذهب بلوت {lot_size}!")
+                    with log_area:
+                        st.write(f"[{now}] 💰 دخلنا صفقة شراء.. انطلق!")
+                else:
+                    with log_area:
+                        st.write(f"[{now}] ⚠️ فشل الدخول (تأكد من الرافعة والرصيد)")
+
+            time.sleep(60) 
+            st.rerun()
+else:
+    mt5.shutdown()
+    st.info("المحرك بانتظار إشارة الانطلاق..")
