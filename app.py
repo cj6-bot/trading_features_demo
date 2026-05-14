@@ -14,7 +14,11 @@ with st.sidebar:
     st.header("🔑 مفاتيح API")
     api_key = st.text_input("API Key", type="password").strip()
     secret_key = st.text_input("Secret Key", type="password").strip()
-    
+
+    margin_input = st.sidebar.number_input("حدد المارجن المطلوب (USDT)", min_value=1.0, value=10.0, step=1.0)
+# السكربت لازم يحول المارجن إلى عدد عقود (Contracts) بناءً على السعر الحالي والرافعة
+contracts = (margin_input * 100) / current_price 
+
     st.markdown("---")
     st.header("⚙️ إعدادات الاستراتيجية")
     symbol = st.selectbox("الزوج", ["BTC_USDT", "ETH_USDT", "SOL_USDT"])
